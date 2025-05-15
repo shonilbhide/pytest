@@ -1955,6 +1955,25 @@ class TestEarlyRewriteBailout:
             assert hook.find_spec("file") is not None
             assert self.find_spec_calls == ["file"]
 
+    def test_assert_excluded_rootpath(
+        self, pytester: Pytester, hook: AssertionRewritingHook, monkeypatch
+    ) -> None:
+        """
+        If test files contained outside rootdir, then skip them
+        """
+        pytester.makepyfile(
+            **{
+                "file.py": """\
+                    def test_simple_failure():
+                        assert 1 + 1 == 3
+                """
+            }
+        )
+        root_path = f"{os.getcwd()}/tests"
+        monkeypatch.setattr("os.getcwd", lambda: root_path)
+        with mock.patch.object(hook, "fnpats", ["*.py"]):
+            assert hook.find_spec("file") is None
+
     @pytest.mark.skipif(
         sys.platform.startswith("win32"), reason="cannot remove cwd on Windows"
     )

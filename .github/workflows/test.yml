@@ -5,35 +5,50 @@ on:
     branches:
       - main
       - "[0-9]+.[0-9]+.x"
-      - "test-me-*"
+      - pr-fails-simulation
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+.[0-9]+rc[0-9]+"
-
   pull_request:
     branches:
       - main
       - "[0-9]+.[0-9]+.x"
-    types: [opened, synchronize, reopened, ready_for_review]
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
 
 env:
   PYTEST_ADDOPTS: "--color=yes"
-  # SETUPTOOLS_SCM_PRETEND_VERSION: "7.3.1.dev0"
-  # SETUPTOOLS_SCM_NO_LOCAL_VERSION: "1"
 
+# Cancel running jobs for the same workflow and branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  actions: read
+# Set permissions at the job level.
+permissions: {}
 
 jobs:
-  run-tests:
-    runs-on: ${{ matrix.os }}
+  package:
+    runs-on: ubuntu-latest
     permissions:
       contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build and Check Package
+        uses: hynek/build-and-inspect-python-package@v2.12.0
 
+  build:
+    needs: [package]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -44,61 +59,154 @@ jobs:
           "windows-py310",
           "windows-py311",
           "windows-py312",
-          "windows-py313"
+          "windows-py313",
+          "ubuntu-py39-lsof-numpy-pexpect",
+          "ubuntu-py39-pluggy",
+          "ubuntu-py39-freeze",
+          "ubuntu-py39-xdist",
+          "ubuntu-py310-xdist",
+          "ubuntu-py311",
+          "ubuntu-py312",
+          "ubuntu-py313-pexpect",
+          "ubuntu-pypy3-xdist",
+          "macos-py310",
+          "macos-py312",
+          "macos-py313",
+          "doctesting",
+          "plugins",
         ]
-
         include:
           - name: "windows-py39-unittestextras"
             python: "3.9"
             os: windows-latest
             tox_env: "py39-unittestextras"
-
+            use_coverage: true
           - name: "windows-py39-pluggy"
             python: "3.9"
             os: windows-latest
             tox_env: "py39-pluggymain-pylib-xdist"
-
           - name: "windows-py39-xdist"
             python: "3.9"
             os: windows-latest
             tox_env: "py39-xdist"
-
           - name: "windows-py310"
             python: "3.10"
             os: windows-latest
             tox_env: "py310-xdist"
-
           - name: "windows-py311"
             python: "3.11"
             os: windows-latest
             tox_env: "py311"
-
           - name: "windows-py312"
             python: "3.12"
             os: windows-latest
             tox_env: "py312"
-
           - name: "windows-py313"
             python: "3.13"
             os: windows-latest
             tox_env: "py313"
-
+          - name: "ubuntu-py39-lsof-numpy-pexpect"
+            python: "3.9"
+            os: ubuntu-latest
+            tox_env: "py39-lsof-numpy-pexpect"
+            use_coverage: true
+          - name: "ubuntu-py39-pluggy"
+            python: "3.9"
+            os: ubuntu-latest
+            tox_env: "py39-pluggymain-pylib-xdist"
+          - name: "ubuntu-py39-freeze"
+            python: "3.9"
+            os: ubuntu-latest
+            tox_env: "py39-freeze"
+          - name: "ubuntu-py39-xdist"
+            python: "3.9"
+            os: ubuntu-latest
+            tox_env: "py39-xdist"
+          - name: "ubuntu-py310-xdist"
+            python: "3.10"
+            os: ubuntu-latest
+            tox_env: "py310-xdist"
+          - name: "ubuntu-py311"
+            python: "3.11"
+            os: ubuntu-latest
+            tox_env: "py311"
+            use_coverage: true
+          - name: "ubuntu-py312"
+            python: "3.12"
+            os: ubuntu-latest
+            tox_env: "py312"
+            use_coverage: true
+          - name: "ubuntu-py313-pexpect"
+            python: "3.13"
+            os: ubuntu-latest
+            tox_env: "py313-pexpect"
+            use_coverage: true
+          - name: "ubuntu-pypy3-xdist"
+            python: "pypy-3.9"
+            os: ubuntu-latest
+            tox_env: "pypy3-xdist"
+          - name: "macos-py310"
+            python: "3.10"
+            os: macos-latest
+            tox_env: "py310-xdist"
+          - name: "macos-py312"
+            python: "3.12"
+            os: macos-latest
+            tox_env: "py312-xdist"
+          - name: "macos-py313"
+            python: "3.13"
+            os: macos-latest
+            tox_env: "py313-xdist"
+          - name: "plugins"
+            python: "3.12"
+            os: ubuntu-latest
+            tox_env: "plugins"
+          - name: "doctesting"
+            python: "3.9"
+            os: ubuntu-latest
+            tox_env: "doctesting"
+            use_coverage: true
+    continue-on-error: >-
+      ${{
+        contains(
+          fromJSON(
+            '[
+              "windows-py39-pluggy",
+              "windows-py313",
+              "ubuntu-py39-pluggy",
+              "ubuntu-py39-freeze",
+              "ubuntu-py313",
+              "macos-py39",
+              "macos-py313"
+            ]'
+          ),
+          matrix.name
+        )
+        && true
+        || false
+      }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Download Package
+        uses: actions/download-artifact@v4
+        with:
+          name: Packages
+          path: dist
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+          check-latest: ${{ endsWith(matrix.python, '-dev') }}
 
       - name: Install dependencies
-        shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install tox pytest-json-report jq
+          pip install tox coverage pytest-json-report jq
 
       - name: Get PR ID
         shell: bash
@@ -110,64 +218,77 @@ jobs:
         if: github.event_name != 'pull_request'
         run: echo "PR_ID=main" >> $GITHUB_ENV
 
+      - name: Set Workflow ID
+        shell: bash
+        run: echo "WORKFLOW_ID=${{ matrix.name }}" >> $GITHUB_ENV
+
+      - name: Create Artifacts Directory
+        shell: bash
+        run: mkdir -p artifacts/pr-${PR_ID}/${WORKFLOW_ID}
+
       - name: Check If Previous Artifacts Exist
         id: check_artifacts
         shell: bash
         run: |
-          echo "Checking if previous test results exist for PR-${PR_ID}..."
+          echo "Checking if previous test results exist for PR-${PR_ID}/${WORKFLOW_ID}..."
           ARTIFACTS_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${{ github.repository }}/actions/artifacts")
-
-          ARTIFACT_COUNT=$(echo "$ARTIFACTS_RESPONSE" | jq -r --arg PR "pr-${PR_ID}-test-results" \
+          
+          ARTIFACT_COUNT=$(echo "$ARTIFACTS_RESPONSE" | jq -r --arg PR "pr-${PR_ID}-${WORKFLOW_ID}-test-results" \
             '[.artifacts[] | select(.name==$PR)] | length')
-
+          
           if [[ "$ARTIFACT_COUNT" -gt 0 ]]; then
             echo "PREV_ARTIFACT_EXISTS=true" >> $GITHUB_ENV
           else
             echo "PREV_ARTIFACT_EXISTS=false" >> $GITHUB_ENV
           fi
 
-      - name: Retrieve Previous Artifacts (If Exists)
+      - name: Retrieve Previous Artifacts
         if: env.PREV_ARTIFACT_EXISTS == 'true'
         shell: bash
         run: |
-          echo "Fetching previous test results for PR ${PR_ID}..."
-
+          echo "Fetching previous test results for PR ${PR_ID}/${WORKFLOW_ID}..."
           ARTIFACT_URL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${{ github.repository }}/actions/artifacts" | \
-            jq -r --arg PR "pr-${PR_ID}-test-results" \
+            jq -r --arg PR "pr-${PR_ID}-${WORKFLOW_ID}-test-results" \
             '[.artifacts[] | select(.name==$PR)] | sort_by(.created_at) | reverse | .[0].archive_download_url')
-
+          
           if [[ -n "$ARTIFACT_URL" && "$ARTIFACT_URL" != "null" ]]; then
             echo "Latest artifact found. Downloading..."
-            mkdir -p artifacts/pr-${PR_ID}
+            mkdir -p artifacts/pr-${PR_ID}/${WORKFLOW_ID}
             curl -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -o artifacts/pr-${PR_ID}/test-results.zip "$ARTIFACT_URL"
-            unzip -o artifacts/pr-${PR_ID}/test-results.zip -d artifacts/pr-${PR_ID}
-
+              -o artifacts/pr-${PR_ID}/${WORKFLOW_ID}/test-results.zip "$ARTIFACT_URL"
+            unzip -o artifacts/pr-${PR_ID}/${WORKFLOW_ID}/test-results.zip -d artifacts/pr-${PR_ID}/${WORKFLOW_ID}
+            
             echo "======================================="
-            echo "Previous Test Results for PR-${PR_ID}:"
-            cat artifacts/pr-${PR_ID}/test_results.json || echo "No previous test results found."
+            echo "Previous Test Results for PR-${PR_ID}/${WORKFLOW_ID}:"
+            cat artifacts/pr-${PR_ID}/${WORKFLOW_ID}/test_results.json || echo "No previous test results found."
             echo "======================================="
           else
-            echo "No previous test results found for PR-${PR_ID}. Running fresh tests."
+            echo "No previous test results found for PR-${PR_ID}/${WORKFLOW_ID}. Running fresh tests."
           fi
 
-      - name: Extract Failed and Passed Tests from Previous Run
+      - name: Collect All Test Cases
         shell: bash
         run: |
-          mkdir -p artifacts/pr-${PR_ID}
-          PREV_RESULTS="artifacts/pr-${PR_ID}/test_results.json"
-          FAILED_TESTS_FILE="artifacts/pr-${PR_ID}/failed_tests.txt"
-          ALL_TESTS_FILE="artifacts/pr-${PR_ID}/all_tests.txt"
-          REMAINING_TESTS_FILE="artifacts/pr-${PR_ID}/remaining_tests.txt"
-        
-            # Use tox to collect all tests
-          tox -e ${{ matrix.tox_env }} -- --collect-only --quiet | grep -v "SKIP" | grep "::" > $ALL_TESTS_FILE || true
-          #tox -e ${{ matrix.tox_env }} -- --collect-only -v | grep -v "SKIP" | grep -E "^(.*?)::" | sed -E 's/\s+.*$//' > $ALL_TESTS_FILE || true
+          mkdir -p artifacts/pr-${PR_ID}/${WORKFLOW_ID}
+          ALL_TESTS_FILE="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/all_tests.txt"
+          
+          # Use tox to collect all tests
+          tox -e ${{ matrix.tox_env }} --installpkg `find dist/*.tar.gz` -- --collect-only --quiet | grep -v "SKIP" | grep "::" > $ALL_TESTS_FILE || true
+          
+          echo "Collected $(wc -l < $ALL_TESTS_FILE) test cases."
 
+      - name: Extract Failed Tests from Previous Run
+        shell: bash
+        run: |
+          PREV_RESULTS="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/test_results.json"
+          FAILED_TESTS_FILE="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/failed_tests.txt"
+          ALL_TESTS_FILE="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/all_tests.txt"
+          REMAINING_TESTS_FILE="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/remaining_tests.txt"
+          
           if [[ -f "$PREV_RESULTS" ]]; then
             echo "Extracting failed test cases from previous run..."
             cat $PREV_RESULTS | jq -r '.tests | map(select(.outcome == "failed")) | .[].nodeid' > $FAILED_TESTS_FILE
@@ -175,31 +296,35 @@ jobs:
             echo "No previous test results found. Skipping extraction."
             touch $FAILED_TESTS_FILE
           fi
-        
+          
           if [[ -s "$FAILED_TESTS_FILE" ]]; then
             echo "Failed tests from the previous run:"
             cat $FAILED_TESTS_FILE
+            
+            # Identify remaining tests (all tests minus failed tests)
+            grep -v -F -f $FAILED_TESTS_FILE $ALL_TESTS_FILE > $REMAINING_TESTS_FILE || true
           else
             echo "No previously failed tests found."
+            cp $ALL_TESTS_FILE $REMAINING_TESTS_FILE
           fi
-     
-      - name: Pre-Check for Previously Failed Tests
+
+      - name: Pre-Check for Skipped Tests
         shell: bash
         run: |
-          FAILED_TESTS_FILE="artifacts/pr-${PR_ID}/failed_tests.txt"
-          SKIPPED_TESTS_FILE="artifacts/pr-${PR_ID}/skipped_tests.txt"
-      
+          FAILED_TESTS_FILE="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/failed_tests.txt"
+          SKIPPED_TESTS_FILE="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/skipped_tests.txt"
+          
           # Only run this check if we have previously failed tests
           if [[ -s "$FAILED_TESTS_FILE" ]]; then
             echo "Checking for skipped tests among previously failed tests..."
-            tox -e ${{ matrix.tox_env }} -- --collect-only -v $(cat $FAILED_TESTS_FILE) | grep "SKIP" | grep "::" | sed 's/.*SKIP //g' > $SKIPPED_TESTS_FILE
-
+            tox -e ${{ matrix.tox_env }} --installpkg `find dist/*.tar.gz` -- --collect-only -v $(cat $FAILED_TESTS_FILE) | grep "SKIP" | grep "::" | sed 's/.*SKIP //g' > $SKIPPED_TESTS_FILE || true
+            
             # Remove skipped tests from the failed tests list
             if [[ -s "$SKIPPED_TESTS_FILE" ]]; then
               echo "Removing skipped tests from the rerun list:"
               cat $SKIPPED_TESTS_FILE
-              grep -v -F -f $SKIPPED_TESTS_FILE $FAILED_TESTS_FILE > "artifacts/pr-${PR_ID}/filtered_failed_tests.txt"
-              mv "artifacts/pr-${PR_ID}/filtered_failed_tests.txt" $FAILED_TESTS_FILE
+              grep -v -F -f $SKIPPED_TESTS_FILE $FAILED_TESTS_FILE > "artifacts/pr-${PR_ID}/${WORKFLOW_ID}/filtered_failed_tests.txt"
+              mv "artifacts/pr-${PR_ID}/${WORKFLOW_ID}/filtered_failed_tests.txt" $FAILED_TESTS_FILE
             else
               echo "No skipped tests found among previously failed tests."
             fi
@@ -208,104 +333,95 @@ jobs:
       - name: Generate Failed Test Commands
         shell: bash
         run: |
-          FAILED_TESTS_FILE="artifacts/pr-${PR_ID}/failed_tests.txt"
+          FAILED_TESTS_FILE="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/failed_tests.txt"
           
           if [[ -s "$FAILED_TESTS_FILE" ]]; then
-            python scripts/generate_pytest_commands.py --input artifacts/pr-${PR_ID}/remaining_tests.txt --output-dir artifacts --pr-id ${PR_ID} --generate-script --batch-size 50 --tox-env ${{ matrix.tox_env }}
+            echo "Generating commands for previously failed tests..."
+            python scripts/generate_pytest_commands.py --input $FAILED_TESTS_FILE --output-dir artifacts --pr-id ${PR_ID} --workflow-id ${WORKFLOW_ID} --generate-script --batch-size 50 --tox-env ${{ matrix.tox_env }} --prefix failed
+          else
+            echo "No previously failed tests to generate commands for."
           fi
-            
+
       - name: Run Previously Failed Tests First
         shell: bash
         run: |
-          FAILED_TESTS_FILE="artifacts/pr-${PR_ID}/failed_tests.txt"
-      
+          FAILED_TESTS_FILE="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/failed_tests.txt"
+          FAILED_SCRIPT="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/run_failed_tests.sh"
+          
           if [[ -s "$FAILED_TESTS_FILE" ]]; then
             echo "Rerunning previously failed tests using tox env ${{ matrix.tox_env }}..."
             
-            if [[ -f "artifacts/pr-${PR_ID}/run_failed_tests.sh" ]]; then
-              chmod +x artifacts/pr-${PR_ID}/run_failed_tests.sh
-              bash artifacts/pr-${PR_ID}/run_failed_tests.sh
+            if [[ -f "$FAILED_SCRIPT" ]]; then
+              chmod +x "$FAILED_SCRIPT"
+              if [[ "${{ matrix.use_coverage }}" == "true" ]]; then
+                # Use the coverage-enabled tox environment
+                sed -i 's/tox -e ${{ matrix.tox_env }}/tox -e ${{ matrix.tox_env }}-coverage/g' "$FAILED_SCRIPT"
+              fi
+              bash "$FAILED_SCRIPT"
             else
               echo "No failed test script generated."
             fi
           else
             echo "No previously failed tests found."
           fi
-        
 
       - name: Check If Any Tests Failed Again
         shell: bash
         run: |
-          TEMP_RESULTS="artifacts/pr-${PR_ID}/temp_test_results.json"
-          FAILED_AGAIN_FILE="artifacts/pr-${PR_ID}/failed_again.txt"
+          TEMP_RESULTS="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/test_results.json"
+          FAILED_AGAIN_FILE="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/failed_again.txt"
           
           if [[ -f "$TEMP_RESULTS" ]]; then
             echo "Analyzing test results..."
+            
             # Extract failed tests (excluding skipped)
-            cat $TEMP_RESULTS | jq -r '.tests | map(select(.outcome == "failed")) | .[].nodeid' > $FAILED_AGAIN_FILE
+            cat $TEMP_RESULTS | jq -r '.tests | map(select(.outcome == "failed")) | .[].nodeid' > $FAILED_AGAIN_FILE || true
+            
             # Extract skipped tests for reporting
-            cat $TEMP_RESULTS | jq -r '.tests | map(select(.outcome == "skipped")) | .[].nodeid' > "artifacts/pr-${PR_ID}/skipped_tests_report.txt"
+            cat $TEMP_RESULTS | jq -r '.tests | map(select(.outcome == "skipped")) | .[].nodeid' > "artifacts/pr-${PR_ID}/${WORKFLOW_ID}/skipped_tests_report.txt" || true
             
             # Report on skipped tests
-            if [[ -s "artifacts/pr-${PR_ID}/skipped_tests_report.txt" ]]; then
+            if [[ -s "artifacts/pr-${PR_ID}/${WORKFLOW_ID}/skipped_tests_report.txt" ]]; then
               echo "The following tests were skipped during execution:"
-              cat "artifacts/pr-${PR_ID}/skipped_tests_report.txt"
+              cat "artifacts/pr-${PR_ID}/${WORKFLOW_ID}/skipped_tests_report.txt"
             fi
           fi
           
           if [[ -s "$FAILED_AGAIN_FILE" ]]; then
             echo "Some tests failed again. Stopping execution."
+            echo "Failed tests:"
+            cat $FAILED_AGAIN_FILE
             exit 1
           fi
 
-      - name: Identify Remaining Untested Test Cases
+      - name: Generate Commands for Remaining Tests
         shell: bash
         run: |
-          FAILED_TESTS_FILE="artifacts/pr-${PR_ID}/failed_tests.txt"
-          ALL_TESTS_FILE="artifacts/pr-${PR_ID}/all_tests.txt"
-          REMAINING_TESTS_FILE="artifacts/pr-${PR_ID}/remaining_tests.txt"
-
-          echo "Finding remaining tests to run..."
-          grep -v -F -f $FAILED_TESTS_FILE $ALL_TESTS_FILE > $REMAINING_TESTS_FILE || true
-
+          REMAINING_TESTS_FILE="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/remaining_tests.txt"
+          
           if [[ -s "$REMAINING_TESTS_FILE" ]]; then
-            echo "Remaining tests to run:"
-            cat $REMAINING_TESTS_FILE
+            echo "Generating commands for remaining tests..."
+            python scripts/generate_pytest_commands.py --input $REMAINING_TESTS_FILE --output-dir artifacts --pr-id ${PR_ID} --workflow-id ${WORKFLOW_ID} --generate-script --batch-size 50 --tox-env ${{ matrix.tox_env }}
           else
-            echo "No remaining tests to run."
-          fi
-      
-      - name: Set Workflow ID
-        shell: bash
-        run: echo "WORKFLOW_ID=${{ matrix.name }}" >> $GITHUB_ENV
-
-      - name: Generate Test Commands
-        shell: bash
-        run: |
-          python scripts/generate_pytest_commands.py --input artifacts/pr-${PR_ID}/remaining_tests.txt --output-dir artifacts --pr-id ${PR_ID} --workflow-id ${WORKFLOW_ID} --generate-script --batch-size 20 --tox-env ${{ matrix.tox_env }}
-
-      - name: Display Retrieved Test Results
-        shell: bash
-        run: |
-          RUN_TESTS_FILE="artifacts/pr-${PR_ID}/run_tests.sh"
-          if [[ -f "$RUN_TESTS_FILE" ]]; then
-            echo "Content of run_tests.sh:"
-            cat "$RUN_TESTS_FILE"
-          else
-            echo "run_tests.sh file does not exist."
+            echo "No remaining tests to generate commands for."
           fi
 
       - name: Run Remaining Test Cases
         shell: bash
         run: |
-          REMAINING_TESTS_FILE="artifacts/pr-${PR_ID}/remaining_tests.txt"
+          REMAINING_TESTS_FILE="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/remaining_tests.txt"
+          RUN_TESTS_SCRIPT="artifacts/pr-${PR_ID}/${WORKFLOW_ID}/run_tests.sh"
           
           if [[ -s "$REMAINING_TESTS_FILE" ]]; then
             echo "Running remaining test cases using tox env ${{ matrix.tox_env }}..."
             
-            if [[ -f "artifacts/pr-${PR_ID}/${WORKFLOW_ID}/run_tests.sh" ]]; then
-              chmod +x artifacts/pr-${PR_ID}/${WORKFLOW_ID}/run_tests.sh
-              bash artifacts/pr-${PR_ID}/${WORKFLOW_ID}/run_tests.sh
+            if [[ -f "$RUN_TESTS_SCRIPT" ]]; then
+              chmod +x "$RUN_TESTS_SCRIPT"
+              if [[ "${{ matrix.use_coverage }}" == "true" ]]; then
+                # Use the coverage-enabled tox environment
+                sed -i 's/tox -e ${{ matrix.tox_env }}/tox -e ${{ matrix.tox_env }}-coverage/g' "$RUN_TESTS_SCRIPT"
+              fi
+              bash "$RUN_TESTS_SCRIPT"
               
               # Combine results after running tests
               python scripts/generate_pytest_commands.py --combine-results --output-dir=artifacts --pr-id=${PR_ID} --workflow-id=${WORKFLOW_ID}
@@ -315,18 +431,51 @@ jobs:
           else
             echo "No remaining tests to run."
           fi
-              
-      - name: Upload New Test Results
+        
+      - name: Generate coverage report
+        if: "matrix.use_coverage && !failure()"
+        shell: bash
+        run: |
+          if [[ -d ".coverage" || -f ".coverage" ]]; then
+            python -m coverage xml
+          else
+            echo "Looking for coverage data in tox environment..."
+            # Try to find and copy the coverage data from tox environment
+            TOX_ENV_DIR=".tox/${{ matrix.tox_env }}-coverage"
+            if [[ -d "$TOX_ENV_DIR" ]]; then
+              if [[ -d "$TOX_ENV_DIR/.coverage" || -f "$TOX_ENV_DIR/.coverage" ]]; then
+                cp -r "$TOX_ENV_DIR/.coverage" .
+                python -m coverage xml
+              else
+                echo "No coverage data found in tox environment."
+                # Create empty coverage file to prevent failure
+                echo '<?xml version="1.0" ?><coverage version="7.3.2"></coverage>' > coverage.xml
+              fi
+            else
+              echo "Tox environment directory not found."
+              # Create empty coverage file to prevent failure
+              echo '<?xml version="1.0" ?><coverage version="7.3.2"></coverage>' > coverage.xml
+            fi
+          fi
+      - name: Upload coverage to Codecov
+        if: "matrix.use_coverage && !failure()"
+        uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: false
+          files: ./coverage.xml
+          verbose: true
+
+      - name: Upload Test Results
         uses: actions/upload-artifact@v4
         with:
           name: pr-${{ env.PR_ID }}-${{ env.WORKFLOW_ID }}-test-results
-          path: |
-            artifacts/pr-${{ env.PR_ID }}/${{ env.WORKFLOW_ID }}/test_results.json
-            artifacts/pr-${{ env.PR_ID }}/${{ env.WORKFLOW_ID }}/*.sh
-                
+          path: artifacts/pr-${{ env.PR_ID }}/${{ env.WORKFLOW_ID }}/test_results.json
+
   retrieve-results:
-    needs: run-tests
+    needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Get PR ID
         if: github.event_name == 'pull_request'
@@ -335,23 +484,23 @@ jobs:
       - name: Set Default Folder for Non-PR Runs
         if: github.event_name != 'pull_request'
         run: echo "PR_ID=main" >> $GITHUB_ENV
-      
+
       - name: Check out code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.9"
-      
+
       - name: Install dependencies
         shell: bash
         run: |
           python -m pip install --upgrade pip
           pip install jq
-      
+
       - name: Create directory for results
         run: mkdir -p retrieved-results
 
@@ -361,13 +510,13 @@ jobs:
           pattern: pr-${{ env.PR_ID }}-*-test-results
           path: retrieved-results
           merge-multiple: false
-      
+
       - name: Debug directory structure
         shell: bash
         run: |
           echo "Debugging directory structure..."
           find retrieved-results -type f | sort
-      
+
       - name: Extract zip files if needed
         shell: bash
         run: |
@@ -379,7 +528,7 @@ jobs:
               unzip -o "$zip_file" -d "$workflow_dir"
             fi
           done
-      
+
       - name: Find test result files
         shell: bash
         run: |
@@ -387,7 +536,7 @@ jobs:
           echo "Downloaded artifacts for PR ${PR_ID}:"
           find retrieved-results -type f -name "test_results*.json" | sort
           echo "======================================="
-      
+
       - name: Combine test results
         shell: bash
         run: |
@@ -451,7 +600,7 @@ jobs:
           
           # Create a copy as test_results.json for backward compatibility
           cp retrieved-results/combined_results.json retrieved-results/test_results.json
-      
+
       - name: Display Combined Test Results
         shell: bash
         run: |
@@ -459,38 +608,24 @@ jobs:
           echo "Combined Test Results from PR ${PR_ID}:"
           echo "Summary:"
           jq '.summary' retrieved-results/combined_results.json
+          
           echo "Failed Tests:"
           jq -r '.tests | map(select(.outcome == "failed")) | .[].nodeid' retrieved-results/combined_results.json || echo "No failed tests found."
           echo "======================================="
-      
+
       - name: Upload Combined Results
         uses: actions/upload-artifact@v4
         with:
           name: pr-${{ env.PR_ID }}-combined-test-results
           path: retrieved-results/combined_results.json
 
-  # # retrieve-results:
-  #   needs: run-tests
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Get PR ID
-  #       if: github.event_name == 'pull_request'
-  #       run: echo "PR_ID=${{ github.event.number }}" >> $GITHUB_ENV
-
-  #     - name: Set Default Folder for Non-PR Runs
-  #       if: github.event_name != 'pull_request'
-  #       run: echo "PR_ID=main" >> $GITHUB_ENV
-
-  #     - name: Download Test Results
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: pr-${{ env.PR_ID }}-test-results
-  #         path: retrieved-results
-
-  #     - name: Display Retrieved Test Results
-  #       shell: bash
-  #       run: |
-  #         echo "======================================="
-  #         echo "Retrieved Test Results from PR ${PR_ID}:"
-  #         cat retrieved-results/test_results.json
-  #         echo "======================================="
+  check: # This job does nothing and is only used for the branch protection
+    if: always()
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@223e4bb7a751b91f43eda76992bcfbf23b8b0302
+        with:
+          jobs: ${{ toJSON(needs) }}

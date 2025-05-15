@@ -421,14 +421,26 @@ class ApproxScalar(ApproxBase):
     def __eq__(self, actual) -> bool:
         """Return whether the given value is equal to the expected value
         within the pre-specified tolerance."""
+
+        def is_bool(val: Any) -> bool:
+            # Check if `val` is a native bool or numpy bool.
+            if isinstance(val, bool):
+                return True
+            try:
+                import numpy as np
+
+                return isinstance(val, np.bool_)
+            except ImportError:
+                return False
+
         asarray = _as_numpy_array(actual)
         if asarray is not None:
             # Call ``__eq__()`` manually to prevent infinite-recursion with
             # numpy<1.13.  See #3748.
             return all(self.__eq__(a) for a in asarray.flat)
 
-        # Short-circuit exact equality, except for bool
-        if isinstance(self.expected, bool) and not isinstance(actual, bool):
+        # Short-circuit exact equality, except for bool and np.bool_
+        if is_bool(self.expected) and not is_bool(actual):
             return False
         elif actual == self.expected:
             return True
@@ -436,8 +448,8 @@ class ApproxScalar(ApproxBase):
         # If either type is non-numeric, fall back to strict equality.
         # NB: we need Complex, rather than just Number, to ensure that __abs__,
         # __sub__, and __float__ are defined. Also, consider bool to be
-        # nonnumeric, even though it has the required arithmetic.
-        if isinstance(self.expected, bool) or not (
+        # non-numeric, even though it has the required arithmetic.
+        if is_bool(self.expected) or not (
             isinstance(self.expected, (Complex, Decimal))
             and isinstance(actual, (Complex, Decimal))
         ):
@@ -620,8 +632,10 @@ def approx(expected, rel=None, abs=None, nan_ok: bool = False) -> ApproxBase:
         >>> 1 + 1e-8 == approx(1, rel=1e-6, abs=1e-12)
         True
 
-    You can also use ``approx`` to compare nonnumeric types, or dicts and
-    sequences containing nonnumeric types, in which case it falls back to
+    **Non-numeric types**
+
+    You can also use ``approx`` to compare non-numeric types, or dicts and
+    sequences containing non-numeric types, in which case it falls back to
     strict equality. This can be useful for comparing dicts and sequences that
     can contain optional values::
 
@@ -678,6 +692,15 @@ def approx(expected, rel=None, abs=None, nan_ok: bool = False) -> ApproxBase:
         from the
         `re_assert package <https://github.com/asottile/re-assert>`_.
 
+
+    .. note::
+
+        Unlike built-in equality, this function considers
+        booleans unequal to numeric zero or one. For example::
+
+           >>> 1 == approx(True)
+           False
+
     .. warning::
 
        .. versionchanged:: 3.2
@@ -696,10 +719,10 @@ def approx(expected, rel=None, abs=None, nan_ok: bool = False) -> ApproxBase:
 
     .. versionchanged:: 3.7.1
        ``approx`` raises ``TypeError`` when it encounters a dict value or
-       sequence element of nonnumeric type.
+       sequence element of non-numeric type.
 
     .. versionchanged:: 6.1.0
-       ``approx`` falls back to strict equality for nonnumeric types instead
+       ``approx`` falls back to strict equality for non-numeric types instead
        of raising ``TypeError``.
     """
     # Delegate the comparison to a class that knows how to deal with the type
